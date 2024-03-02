@@ -59,11 +59,11 @@ use smithay::{
         security_context::{
             SecurityContext, SecurityContextHandler, SecurityContextListenerSource, SecurityContextState,
         },
-        selection::data_device::{
-            set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
-            ServerDndGrabHandler,
-        },
         selection::{
+            data_device::{
+                set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
+                ServerDndGrabHandler,
+            },
             primary_selection::{set_primary_focus, PrimarySelectionHandler, PrimarySelectionState},
             wlr_data_control::{DataControlHandler, DataControlState},
             SelectionHandler,
@@ -96,10 +96,11 @@ use crate::{
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
-    delegate_xwayland_keyboard_grab,
+    delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
     utils::{Point, Size},
     wayland::selection::{SelectionSource, SelectionTarget},
     wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrabHandler, XWaylandKeyboardGrabState},
+    wayland::xwayland_shell,
     xwayland::{X11Wm, XWayland, XWaylandEvent},
 };
 
@@ -149,6 +150,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub presentation_state: PresentationState,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
     pub xdg_foreign_state: XdgForeignState,
+    #[cfg(feature = "xwayland")]
+    pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
 
     pub dnd_icon: Option<WlSurface>,
 
@@ -513,6 +516,9 @@ impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for AnvilState<
 #[cfg(feature = "xwayland")]
 delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 
+#[cfg(feature = "xwayland")]
+delegate_xwayland_shell!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
+
 impl<BackendData: Backend> XdgForeignHandler for AnvilState<BackendData> {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
         &mut self.xdg_foreign_state
@@ -616,6 +622,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
 
+        #[cfg(feature = "xwayland")]
+        let xwayland_shell_state = xwayland_shell::XWaylandShellState::new::<Self>(&dh.clone());
+
         AnvilState {
             backend_data,
             display_handle: dh,
@@ -649,6 +658,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             clock,
 
             #[cfg(feature = "xwayland")]
+            xwayland_shell_state,
+            #[cfg(feature = "xwayland")]
             xwm: None,
             #[cfg(feature = "xwayland")]
             xdisplay: None,
@@ -675,7 +686,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         )
         .expect("failed to start XWayland");
 
-        let dh = self.display_handle.clone();
         let ret = self
             .handle
             .insert_source(xwayland, move |event, _, data| match event {
@@ -683,9 +693,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     x11_socket,
                     display_number,
                 } => {
-                    let mut wm =
-                        X11Wm::start_wm(data.state.handle.clone(), dh.clone(), x11_socket, client.clone())
-                            .expect("Failed to attach X11 Window Manager");
+                    let mut wm = X11Wm::start_wm(data.state.handle.clone(), x11_socket, client.clone())
+                        .expect("Failed to attach X11 Window Manager");
 
                     let cursor = Cursor::load();
                     let image = cursor.get_image(1, Duration::ZERO);
