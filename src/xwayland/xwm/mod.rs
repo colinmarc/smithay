@@ -255,7 +255,7 @@ impl StackingDirection {
 }
 
 /// Handler trait for X11Wm interactions
-pub trait XwmHandler: xwayland_shell::XWaylandShellHandler {
+pub trait XwmHandler {
     /// [`X11Wm`] getter for a given ID.
     fn xwm_state(&mut self, xwm: XwmId) -> &mut X11Wm;
 
@@ -665,7 +665,9 @@ impl X11Wm {
         client: Client,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
-        D: XwmHandler + 'static,
+        D: XwmHandler,
+        D: xwayland_shell::XWaylandShellHandler,
+        D: 'static,
     {
         let id = XwmId(next_xwm_id());
         let span = debug_span!("xwayland_wm", id = id.0);
@@ -1004,7 +1006,12 @@ impl X11Wm {
 
     /// This function has to be called on [`CompositorHandler::commit`](crate::wayland::compositor::CompositorHandler::commit) to
     /// handle associating surfaces with X11 windows.
-    pub fn commit_hook<D: XwmHandler + 'static>(state: &mut D, surface: &WlSurface) {
+    pub fn commit_hook<D>(state: &mut D, surface: &WlSurface)
+    where
+        D: XwmHandler,
+        D: xwayland_shell::XWaylandShellHandler,
+        D: 'static,
+    {
         if let Some(client) = surface.client() {
             // We only care about surfaces created by XWayland.
             if let Some(xwm_id) = client
@@ -1264,12 +1271,17 @@ impl X11Wm {
     }
 }
 
-fn handle_event<D: XwmHandler + 'static>(
+fn handle_event<D>(
     loop_handle: &LoopHandle<'_, D>,
     state: &mut D,
     xwm_id: XwmId,
     event: Event,
-) -> Result<(), ReplyOrIdError> {
+) -> Result<(), ReplyOrIdError>
+where
+    D: XwmHandler,
+    D: xwayland_shell::XWaylandShellHandler,
+    D: 'static,
+{
     let xwm = state.xwm_state(xwm_id);
     let _guard = xwm.span.enter();
     let conn = xwm.conn.clone();
