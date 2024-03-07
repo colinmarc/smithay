@@ -204,6 +204,9 @@ where
 
                 XWaylandShellHandler::surface_associated(state, data.wl_surface.clone(), serial);
             }
+            xwayland_surface_v1::Request::Destroy => {
+                // Any already existing associations are unaffected.
+            }
             _ => unreachable!(),
         }
     }
